@@ -1,5 +1,9 @@
 import java.io.*;
 import java.net.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Base64;
 
 public class server {
     public static void main(String[] args) {
@@ -12,6 +16,15 @@ public class server {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("Client connected: " + clientSocket.getInetAddress());
 
+                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                String encodedImage = in.readLine();
+
+                // Decode the Base64 string back to bytes
+                byte[] imageBytes = Base64.getDecoder().decode(encodedImage);
+
+                // Save the decoded image to a file
+                saveImageToFile(imageBytes, "output_image.jpg"); 
+
                 // Create a new thread to handle the client
                 ClientHandler clientHandler = new ClientHandler(clientSocket);
                 Thread thread = new Thread(clientHandler);
@@ -21,6 +34,12 @@ public class server {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    private static void saveImageToFile(byte[] imageBytes, String fileName) throws IOException {
+        Path outputPath = Paths.get(fileName);
+        Files.write(outputPath, imageBytes);
+        System.out.println("Image saved to: " + fileName);
     }
 }
 
@@ -39,11 +58,11 @@ class ClientHandler implements Runnable {
 
             // Read and print messages from the client
             String message;
-            while ((message = in.readLine()) != null) {
+            while ((message = in.readLine()) != "exit") {
                 System.out.println("Received from client: " + message);
 
                 // Send a response back to the client
-                out.println("Server received your message: " + message);
+                out.println(message);
             }
 
             // Close the connections
