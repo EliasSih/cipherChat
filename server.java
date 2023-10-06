@@ -1,11 +1,11 @@
 import java.io.*;
 import java.net.*;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Base64;
+import java.util.ArrayList;
+import java.util.List;
 
 public class server {
+    private static List<PrintWriter> clientWriters = new ArrayList<>();
+
     public static void main(String[] args) {
         try {
             ServerSocket serverSocket = new ServerSocket(12345);
@@ -16,19 +16,23 @@ public class server {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("Client connected: " + clientSocket.getInetAddress());
 
-                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                String encodedImage = in.readLine();
+                //BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                //String encodedImage = in.readLine();
 
                 // Decode the Base64 string back to bytes
-                byte[] imageBytes = Base64.getDecoder().decode(encodedImage);
+                //byte[] imageBytes = Base64.getDecoder().decode(encodedImage);
 
                 // Save the decoded image to a file
-                saveImageToFile(imageBytes, "output_image.jpg"); 
+                //saveImageToFile(imageBytes, "output_image.jpg"); 
 
                 // Create a new thread to handle the client
                 ClientHandler clientHandler = new ClientHandler(clientSocket);
                 Thread thread = new Thread(clientHandler);
                 thread.start();
+
+                // Create a PrintWriter for this client and add it to the list
+                PrintWriter clientWriter = new PrintWriter(clientSocket.getOutputStream(), true);
+                clientWriters.add(clientWriter);
             }
 
         } catch (IOException e) {
@@ -36,41 +40,46 @@ public class server {
         }
     }
 
-    private static void saveImageToFile(byte[] imageBytes, String fileName) throws IOException {
-        Path outputPath = Paths.get(fileName);
-        Files.write(outputPath, imageBytes);
-        System.out.println("Image saved to: " + fileName);
+    // Helper method to broadcast a message to all connected clients
+    public static void broadcastMessage(String message) {
+        for (PrintWriter writer : clientWriters) {
+            writer.println(message);
+        }
     }
 }
 
 class ClientHandler implements Runnable {
     private Socket clientSocket;
+    private PrintWriter out;
 
     public ClientHandler(Socket clientSocket) {
         this.clientSocket = clientSocket;
+        try {
+            this.out = new PrintWriter(clientSocket.getOutputStream(), true);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public void run() {
         try {
             // Create input and output streams for communication
             BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-            PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
 
             // Read and print messages from the client
             String message;
-            while ((message = in.readLine()) != "exit") {
+            while ((message = in.readLine()) != null) {
                 System.out.println("Received from client: " + message);
 
-                // Send a response back to the client
-                out.println(message);
+                // Broadcast the message to all connected clients
+                server.broadcastMessage(message);
             }
 
             // Close the connections
             in.close();
-            out.close();
             clientSocket.close();
         } catch (IOException e) {
             e.printStackTrace();
-        }
+        }    
     }
 }
