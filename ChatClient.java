@@ -4,6 +4,10 @@ import java.awt.*;
 import java.awt.event.*;
 import java.io.*;
 import java.net.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -20,6 +24,7 @@ public class ChatClient {
     private StyledDocument doc;
 
     private Map<String, Color> userColors = new HashMap<>(); // Mapping of user names to colors
+    static File selectedFile;
 
     public ChatClient(String serverAddress, int serverPort, String userName) {
         this.userName = userName;
@@ -47,22 +52,60 @@ public class ChatClient {
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(400, 300);
 
+        JPanel inputPanel = new JPanel(new BorderLayout());
+
         textPane = new JTextPane();
         textPane.setEditable(false);
         doc = textPane.getStyledDocument();
-        frame.add(new JScrollPane(textPane), BorderLayout.CENTER);
-
+    
         textField = new JTextField();
-        frame.add(textField, BorderLayout.SOUTH);
+        inputPanel.add(textField, BorderLayout.CENTER);
+    
+        JButton selectImageButton = new JButton("Select Image");
+        inputPanel.add(selectImageButton, BorderLayout.EAST);
+    
+        frame.add(new JScrollPane(textPane), BorderLayout.CENTER);
+        frame.add(inputPanel, BorderLayout.SOUTH);
 
         textField.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                sendMessage(userName + ": " + textField.getText());
+                
+                if (selectedFile != null) {
+                    try {
+                        Path imagePath = Path.of(selectedFile.getAbsolutePath()); 
+                        byte[] imageBytes = Files.readAllBytes(imagePath);
+
+                        // Encode the image as a Base64 string
+                        String encodedImage = Base64.getEncoder().encodeToString(imageBytes);
+                        String hashedImage = hashing.encryptThisString(encodedImage);
+                        sendImage(encodedImage + " " + hashedImage);
+
+                        String hashedMessage = hashing.encryptThisString(textField.getText());
+                        sendMessage(userName + ": " + textField.getText() + " " + hashedMessage);                     
+                    } catch (IOException error) {
+                        error.printStackTrace();
+                    }
+                } else {
+                    String hashedMessage = hashing.encryptThisString(textField.getText());
+                    sendMessage(userName + ": " + textField.getText() + " " + hashedMessage);
+                }
                 textField.setText("");
             }
         });
 
+        selectImageButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                JFileChooser fileChooser = new JFileChooser();
+                int result = fileChooser.showOpenDialog(frame);
+                if (result == JFileChooser.APPROVE_OPTION) {
+                    selectedFile = fileChooser.getSelectedFile();
+                    // Store the selected image file path (selectedFile.getAbsolutePath())                    
+                }
+            }
+        });
+
         frame.setVisible(true);
+
     }
 
     private void setupNetworking() {
@@ -77,6 +120,15 @@ public class ChatClient {
     private void sendMessage(String message) {
         try {
             out.println(message);
+            out.flush();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void sendImage(String image) {
+        try {
+            out.println(image);
             out.flush();
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -121,21 +173,50 @@ public class ChatClient {
                         // Determine the color based on the sender's name
                         Color color = userColors.get(sender);
 
+                        String[] parts = message.split(" ");
+
                         // Set the color of the text
                         if (color != null) {
                             SimpleAttributeSet attributes = new SimpleAttributeSet();
-                            StyleConstants.setForeground(attributes, color);
-                            doc.insertString(doc.getLength(), message + "\n", attributes);
+                            StyleConstants.setForeground(attributes, color);                           
+                            doc.insertString(doc.getLength(), parts[0] + " " + parts[1] + "\n", attributes);
+                            
                         } else {
-                            doc.insertString(doc.getLength(), message + "\n", null);
+                            doc.insertString(doc.getLength(), parts[0] + " " + parts[1] + "\n", null);
+                        }
+
+                        if (hashing.encryptThisString(parts[1]).equals(parts[2])) {
+                                System.out.println("Hash Value for message is Valid");
+                            } else {
+                                System.out.println("Hash Value for message is Invalid");
                         }
                     } else {
-                        doc.insertString(doc.getLength(), message + "\n", null);
+                        doc.insertString(doc.getLength(), "New Image\n", null);
+
+                        String[] parts = message.split(" ");
+
+                        if (hashing.encryptThisString(parts[0]).equals(parts[1])) {
+                                System.out.println("Hash Value for image is Valid");
+                            } else {
+                                System.out.println("Hash Value for image is Invalid");
+                        }
+
+                        // Decode the Base64 string back to bytes
+                        byte[] imageBytes = Base64.getDecoder().decode(parts[0]);
+
+                        // Save the decoded image to a file
+                        saveImageToFile(imageBytes, "output_image.jpg"); 
                     }
                 }
             } catch (IOException | BadLocationException e) {
                 e.printStackTrace();
             }
+        }
+
+        private static void saveImageToFile(byte[] imageBytes, String fileName) throws IOException {
+            Path outputPath = Paths.get(fileName);
+            Files.write(outputPath, imageBytes);
+            System.out.println("Image saved to: " + fileName);
         }
     }
 }
