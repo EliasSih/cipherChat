@@ -1,0 +1,135 @@
+package src;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
+import java.security.PublicKey;
+import java.security.cert.X509Certificate;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+
+
+
+public class GUIServer {
+    private static List<PrintWriter> clientWriters = new ArrayList<>();
+
+
+    public static void main(String[] args) {
+        try {
+            ServerSocket serverSocket = new ServerSocket(12345);
+            System.out.println("Server listening on port 12345...");
+
+            while (true) {
+                // Accept a client connection
+                Socket clientSocket = serverSocket.accept();
+                System.out.println("Client connected: " + clientSocket.getInetAddress());
+
+                // Create a new thread to handle the client
+                CAClientHandler clientHandler = new CAClientHandler(clientSocket);
+                Thread thread = new Thread(clientHandler);
+                thread.start();
+
+                // Create a PrintWriter for this client and add it to the list
+                PrintWriter clientWriter = new PrintWriter(clientSocket.getOutputStream(), true);
+                clientWriters.add(clientWriter);
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Helper method to broadcast a message to all connected clients
+    public static void sendMessageToClient(String message) {
+        for (PrintWriter writer : clientWriters) {
+            writer.println(message);
+        }
+    }
+}
+
+class CAClientHandler implements Runnable {
+    private Socket clientSocket;
+    private PrintWriter out;
+
+    public CAClientHandler(Socket clientSocket) {
+        this.clientSocket = clientSocket;
+        try {
+            this.out = new PrintWriter(clientSocket.getOutputStream(), true);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void run() {
+        try {
+            BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+            String messageFromClient;
+//            GenerateCertificate generateCertificate;
+
+            while ((messageFromClient = in.readLine()) != null) {
+                System.out.println("Received from client: " + messageFromClient);
+
+                // Broadcast the message to all connected clients
+
+//                int spaceIndex = messageFromClient.indexOf(' ');
+                if ((messageFromClient.contains(" ")) && (messageFromClient.substring(0,messageFromClient.indexOf(' ')).equals("generate"))){
+                    String encodedPKey = messageFromClient.substring(messageFromClient.indexOf(' ')+1);
+                    X509Certificate certificate = GenerateCertificate.issueCertificate(decodePublicKey(encodedPKey));
+                    String cert = GenerateCertificate.encodeCertificate(certificate);
+                    GUIServer.sendMessageToClient("Certificate: " + cert);
+                }
+                else if ((messageFromClient.contains(" ")) && (messageFromClient.substring(0,messageFromClient.indexOf(' ')).equals("verify"))){
+                    String encodedCertificate = messageFromClient.substring(messageFromClient.indexOf(' ')+1);
+                    X509Certificate verifyCert = GenerateCertificate.decodeCertificate(encodedCertificate);
+                    boolean valid = GenerateCertificate.verifyCertificate(verifyCert);
+                    messageFromClient = String.valueOf(valid);
+//                    sendMsg("Verified: " + messageFromClient);
+                    if (valid){
+                        GUIServer.sendMessageToClient("Verified: " + messageFromClient); }
+//                        sendMessageToClient("verified");}
+//                    break;
+                }
+                else {
+                    GUIServer.sendMessageToClient(messageFromClient);
+                }
+
+
+            }
+//            while ((messageFromClient = in.readLine()) != null) {
+//                System.out.println("Received from client: " + messageFromClient);
+//                GUIServer.sendMessageToClient(messageFromClient);
+//            }
+            // Close the connections
+            in.close();
+            clientSocket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public PublicKey decodePublicKey(String encodedPublicKey) throws NoSuchAlgorithmException, InvalidKeySpecException {
+        // Decode the Base64-encoded public key into a byte array
+        byte[] publicKeyBytes = Base64.getDecoder().decode(encodedPublicKey);
+
+        // Create an X509EncodedKeySpec to represent the public key
+        X509EncodedKeySpec keySpec = new X509EncodedKeySpec(publicKeyBytes);
+
+        // Get a KeyFactory for the desired algorithm (e.g., RSA or EC)
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        PublicKey publicKey = keyFactory.generatePublic(keySpec);
+
+        return publicKey;
+
+    }
+
+}

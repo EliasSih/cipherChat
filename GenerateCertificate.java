@@ -54,21 +54,21 @@ public class GenerateCertificate {
 ////        KeyPair subjectKeyPair = KeyPairGenerator.getInstance("RSA").generateKeyPair();
 //
 //        // Issue a certificate for the subject
-//        certif = signedCertificate.issueCertificate(publicKey);
+//        certif = issueCertificate(publicKey);
 //        System.out.println(certif);
 //
 //        // Verify certificate
-//        boolean point = signedCertificate.verifyCertificate(certif);
+//        boolean point = verifyCertificate(certif);
 //        System.out.println(point);
 //        // encode certif
-//        String base64EncodedCertificate = signedCertificate.encodeCertificate(certif);
+//        String base64EncodedCertificate = encodeCertificate(certif);
 //
 //        // decode certif
-//        X509Certificate certificate2 = signedCertificate.decodeCertificate(base64EncodedCertificate);
+//        X509Certificate certificate2 = decodeCertificate(base64EncodedCertificate);
 //
 //
 //        System.out.println(certificate2);
-//        System.out.println(signedCertificate.verifyCertificate(certificate2));
+//        System.out.println(verifyCertificate(certificate2));
 //
 //    }
 
@@ -76,8 +76,11 @@ public class GenerateCertificate {
      * The method for issuing the certificates
      * It generates the X509 V3 certificates
      */
-    public X509Certificate issueCertificate(PublicKey publicKey) throws Exception{
+    public static X509Certificate issueCertificate(PublicKey publicKey) throws Exception{
 
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(1024, new SecureRandom());
+        KeyPair keyPair = keyPairGenerator.generateKeyPair();
         // GENERATE THE X509 CERTIFICATE
         X509V3CertificateGenerator certGen =  new X509V3CertificateGenerator();
         certGen.setSerialNumber(BigInteger.valueOf(System.currentTimeMillis()));
@@ -89,7 +92,7 @@ public class GenerateCertificate {
         certGen.setPublicKey(publicKey);
         certGen.setSignatureAlgorithm("SHA256WithRSAEncryption");
         X509Certificate cert = certGen.generateX509Certificate(keyPair.getPrivate());
-        saveCert(cert,keyPair.getPrivate());
+//        saveCert(cert,keyPair.getPrivate());
 
         return cert;
     }
@@ -100,7 +103,7 @@ public class GenerateCertificate {
      * The method to verify a certificate
      * Returns true if it is authentic
      */
-    public boolean verifyCertificate(X509Certificate certificate) throws Exception {
+    public static boolean verifyCertificate(X509Certificate certificate) throws Exception {
         try {
 //            certificate.verify(publicKey);
             certificate.checkValidity();
@@ -109,26 +112,26 @@ public class GenerateCertificate {
             return false;
         }
     }
-    private void saveCert(X509Certificate cert, PrivateKey key) throws Exception {
-        KeyStore keyStore = KeyStore.getInstance("JKS");    
-        keyStore.load(null, null);
-        keyStore.setKeyEntry(certificateName, key, "YOUR_PASSWORD".toCharArray(),  new java.security.cert.Certificate[]{cert});
-        File file = new File(".", certificateName);
-        keyStore.store( new FileOutputStream(file), "YOUR_PASSWORD".toCharArray() );
-    }
+//    private void saveCert(X509Certificate cert, PrivateKey key) throws Exception {
+//        KeyStore keyStore = KeyStore.getInstance("JKS");
+//        keyStore.load(null, null);
+//        keyStore.setKeyEntry(certificateName, key, "YOUR_PASSWORD".toCharArray(),  new java.security.cert.Certificate[]{cert});
+//        File file = new File(".", certificateName);
+//        keyStore.store( new FileOutputStream(file), "YOUR_PASSWORD".toCharArray() );
+//    }
 
     /**
      * The method to encode a certificate
      * and decode
      */
-    public String encodeCertificate(X509Certificate cert) throws CertificateEncodingException {
+    public static String encodeCertificate(X509Certificate cert) throws CertificateEncodingException {
         byte[] buf = cert.getEncoded();
         // cert to send
         String encodedCertificate = Base64.getEncoder().encodeToString(buf);
         return encodedCertificate;
     }
 
-    public X509Certificate decodeCertificate(String encodedCertificate) throws CertificateException {
+    public static X509Certificate decodeCertificate(String encodedCertificate) throws CertificateException {
         byte[] decodedCert = Base64.getDecoder().decode(encodedCertificate);
         CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
         X509Certificate cert = (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(decodedCert));
