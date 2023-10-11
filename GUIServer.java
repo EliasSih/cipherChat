@@ -1,9 +1,6 @@
 package src;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.KeyFactory;
@@ -33,7 +30,7 @@ public class GUIServer {
                 System.out.println("Client connected: " + clientSocket.getInetAddress());
 
                 // Create a new thread to handle the client
-                CAClientHandler clientHandler = new CAClientHandler(clientSocket);
+                ClientHandler clientHandler = new ClientHandler(clientSocket);
                 Thread thread = new Thread(clientHandler);
                 thread.start();
 
@@ -55,15 +52,16 @@ public class GUIServer {
     }
 }
 
-class CAClientHandler implements Runnable {
+class ClientHandler implements Runnable {
     private Socket clientSocket;
     private PrintWriter out;
 
-    public CAClientHandler(Socket clientSocket) {
+    public ClientHandler(Socket clientSocket) {
         this.clientSocket = clientSocket;
         try {
             this.out = new PrintWriter(clientSocket.getOutputStream(), true);
         } catch (IOException e) {
+            out.close();
             e.printStackTrace();
         }
     }
@@ -72,14 +70,11 @@ class CAClientHandler implements Runnable {
         try {
             BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
             String messageFromClient;
-//            GenerateCertificate generateCertificate;
 
             while ((messageFromClient = in.readLine()) != null) {
                 System.out.println("Received from client: " + messageFromClient);
 
-                // Broadcast the message to all connected clients
-
-//                int spaceIndex = messageFromClient.indexOf(' ');
+                // Broadcast the certificate to all connected clients
                 if ((messageFromClient.contains(" ")) && (messageFromClient.substring(0,messageFromClient.indexOf(' ')).equals("generate"))){
                     String encodedPKey = messageFromClient.substring(messageFromClient.indexOf(' ')+1);
                     X509Certificate certificate = GenerateCertificate.issueCertificate(decodePublicKey(encodedPKey));
@@ -91,22 +86,16 @@ class CAClientHandler implements Runnable {
                     X509Certificate verifyCert = GenerateCertificate.decodeCertificate(encodedCertificate);
                     boolean valid = GenerateCertificate.verifyCertificate(verifyCert);
                     messageFromClient = String.valueOf(valid);
-//                    sendMsg("Verified: " + messageFromClient);
                     if (valid){
                         GUIServer.sendMessageToClient("Verified: " + messageFromClient); }
-//                        sendMessageToClient("verified");}
-//                    break;
                 }
+                // send chat messages to client
                 else {
                     GUIServer.sendMessageToClient(messageFromClient);
                 }
 
 
             }
-//            while ((messageFromClient = in.readLine()) != null) {
-//                System.out.println("Received from client: " + messageFromClient);
-//                GUIServer.sendMessageToClient(messageFromClient);
-//            }
             // Close the connections
             in.close();
             clientSocket.close();
@@ -130,6 +119,19 @@ class CAClientHandler implements Runnable {
 
         return publicKey;
 
+    }
+
+    public void closeEverything(Socket socket, PrintWriter writer) {
+        try {
+            if (writer != null) {
+                writer.close();
+            }
+            if (socket != null) {
+                socket.close();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
 }
