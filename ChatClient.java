@@ -34,7 +34,7 @@ public class ChatClient {
     private String secretKey = "donotspeakAboutTHIS";
     private static String userName;
     private Color userColor;
-    private int count = 0;
+    private int count =0;
     
     public ChatClient(Socket socket, String userName) {
         this.socket = socket;
@@ -77,7 +77,10 @@ public class ChatClient {
                 out.println(messageToSend + " " + certificate);
             }
             else {
-                String encryptedMessage = AES_Enctyption.encrypt(userName + ": " + messageToSend, secretKey);
+
+                String msg = userName + ": " + messageToSend;
+                String hashedMessage = hashing.encryptThisString(msg);
+                String encryptedMessage = AES_Enctyption.encrypt(msg +"#"+hashedMessage, secretKey);
                 out.println(encryptedMessage);
             }
         } catch (Exception ex) {
@@ -110,14 +113,17 @@ public class ChatClient {
         System.out.println("Connected to server...");
     }
 
-    /**
-     * Reads messages from the other client
-     */
     private void startReceivingMessages() {
         Thread readerThread = new Thread(new IncomingReader());
         readerThread.start();
     }
 
+    /**
+     * Listens for messages from the server (coming from the other client)
+     * decrypt the cipher text then
+     * split the message from the hash
+     * check the hash
+     */
     class IncomingReader implements Runnable {
         public void run() {
             try {
@@ -128,6 +134,12 @@ public class ChatClient {
                     }
 
                     String decryptedMessage = AES_Enctyption.decrypt(encryptedMessage, secretKey);
+                    String[] parts = decryptedMessage.split("#");
+                    if (hashing.encryptThisString(decryptedMessage.substring(0,decryptedMessage.indexOf('#'))).equals(parts[1])) {
+                        System.out.println("Hash Value for message is Valid");
+                    } else {
+                        System.out.println("Hash Value for message is Invalid");
+                    }
 
                     SwingUtilities.invokeLater(new Runnable() {
                         public void run() {
@@ -136,7 +148,7 @@ public class ChatClient {
                             StyleConstants.setForeground(attributes, userColor);
 
                             try {
-                                doc.insertString(doc.getLength(), decryptedMessage + "\n", attributes);
+                                doc.insertString(doc.getLength(), parts[0] + "\n", attributes);
                             } catch (BadLocationException e) {
                                 e.printStackTrace();
                             }
@@ -285,7 +297,3 @@ public class ChatClient {
             e.printStackTrace();
         }
     }
-
-}
-
-
