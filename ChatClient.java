@@ -34,7 +34,7 @@ public class ChatClient {
     private String secretKey = "donotspeakAboutTHIS";
     private static String userName;
     private Color userColor;
-    private int count =0;
+    private int count = 0;
     
     public ChatClient(Socket socket, String userName) {
         this.socket = socket;
@@ -110,6 +110,9 @@ public class ChatClient {
         System.out.println("Connected to server...");
     }
 
+    /**
+     * Reads messages from the other client
+     */
     private void startReceivingMessages() {
         Thread readerThread = new Thread(new IncomingReader());
         readerThread.start();
@@ -159,7 +162,7 @@ public class ChatClient {
             try {
                 while (true) {
                     String msgFromChat = in.readLine();
-                    if (msgFromChat == null) {
+                    if ((msgFromChat == null)||(count == 2)) {
                         break; // Server has closed the connection
                     }
                     int spaceIndex = msgFromChat.indexOf(' ');
@@ -208,7 +211,6 @@ public class ChatClient {
                                 }
                             }
                         });
-//                        boolean breakthis = count == 2;
 
                     }
                     else {
