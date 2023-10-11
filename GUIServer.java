@@ -1,4 +1,3 @@
-package src;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -61,8 +60,7 @@ class ClientHandler implements Runnable {
         try {
             this.out = new PrintWriter(clientSocket.getOutputStream(), true);
         } catch (IOException e) {
-            out.close();
-            e.printStackTrace();
+            closeEverything(clientSocket, out);
         }
     }
 
@@ -100,7 +98,7 @@ class ClientHandler implements Runnable {
             in.close();
             clientSocket.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            closeEverything(clientSocket, out);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
