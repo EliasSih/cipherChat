@@ -1,5 +1,3 @@
-package src;
-
 import javax.swing.*;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultStyledDocument;
@@ -27,6 +25,7 @@ import java.util.Scanner;
 public class ChatClient {
     private BufferedReader in;
     private PrintWriter out;
+    private Socket socket;
     private String certificate;
     private JFrame frame = new JFrame("Secure Chat");
     private JTextField textField = new JTextField(40);
@@ -37,8 +36,9 @@ public class ChatClient {
     private Color userColor;
     private int count =0;
     
-    public ChatClient(String serverAddress, int serverPort, String userName) {
-        this.userName = userName;
+    public ChatClient(Socket socket, String userName) {
+        this.socket = socket;
+        ChatClient.userName = userName;
         this.certificate = "";
 
         this.userColor = generateRandomColor();
@@ -81,7 +81,7 @@ public class ChatClient {
                 out.println(encryptedMessage);
             }
         } catch (Exception ex) {
-            ex.printStackTrace();
+            closeEverything(socket, out, in);
         }
     }
 
@@ -104,8 +104,7 @@ public class ChatClient {
         return EncodedPublicKey;
     }
 
-    private void setUpNetworking(String serverAddress, int serverPort) throws IOException {
-        Socket socket = new Socket(serverAddress, serverPort);
+    private void setUpNetworking() throws IOException {
         in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         out = new PrintWriter(socket.getOutputStream(), true);
         System.out.println("Connected to server...");
@@ -142,7 +141,7 @@ public class ChatClient {
                     });
                 }
             } catch (IOException e) {
-                e.printStackTrace();
+                closeEverything(socket, out, in);
             }
         }
     }
@@ -233,12 +232,12 @@ public class ChatClient {
                 }
                 startReceivingMessages();
             } catch (IOException e) {
-                e.printStackTrace();
+                closeEverything(socket, out, in);
             }
         }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
 //        if (args.length != 3) {
 //            System.err.println("Usage: java ChatClient <server_address> <server_port> <username>");
 //            System.exit(1);
@@ -255,19 +254,36 @@ public class ChatClient {
 //        String serverAddress = args[0];
 //        int serverPort = Integer.parseInt(args[1]);
 //        String userName = args[2];
-
-        ChatClient client = new ChatClient(serverAddress, serverPort, userName);
+        Socket socket = new Socket(serverAddress, serverPort);
+        ChatClient client = new ChatClient(socket, userName);
         client.frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         client.frame.setVisible(true);
 
         try {
-            client.setUpNetworking(serverAddress, serverPort);
+            client.setUpNetworking();
             client.startReceivingCAMessages();
 //            client.startReceivingMessages();
+        } catch (IOException e) {
+            client.closeEverything(client.socket, client.out, client.in);
+        }
+    }
+
+    public void closeEverything(Socket socket, PrintWriter out, BufferedReader in) {
+        try {
+            if (in != null) {
+                in.close();
+            }
+            if (out != null) {
+                out.close();
+            }
+            if (socket != null) {
+                socket.close();
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
 }
+
 
