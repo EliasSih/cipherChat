@@ -33,8 +33,9 @@ public class ChatClient {
     private JTextPane textPane = new JTextPane();
     private DefaultStyledDocument doc = new DefaultStyledDocument();
     private String secretKey = "donotspeakAboutTHIS";
-    private String userName;
+    private static String userName;
     private Color userColor;
+    private int count =0;
     
     public ChatClient(String serverAddress, int serverPort, String userName) {
         this.userName = userName;
@@ -50,7 +51,7 @@ public class ChatClient {
         textField.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 String message = textField.getText();
-                sendMsgToCA(message);
+                sendMessage(message);
                 textField.setText("");
             }
         });
@@ -61,18 +62,13 @@ public class ChatClient {
         return new Color(rand.nextInt(256), rand.nextInt(256), rand.nextInt(256));
     }
 
-    /**
-     * Send messages to the other client
-     */
-    private void sendMessage(String message) throws IOException {
-        String encryptedMessage = AES_Enctyption.encrypt(userName + ": " + message, secretKey);
-        out.println(encryptedMessage);
-    }
+
 
     /**
      * send messages to the CA
+     * and to other clients
      */
-    private void sendMsgToCA(String messageToSend) {
+    private void sendMessage(String messageToSend) {
         try {
             if (messageToSend.equals("generate")){
                 out.println(messageToSend + " " + encodedPublicKey());
@@ -179,16 +175,15 @@ public class ChatClient {
                                 try {
                                     certificate = msgFromChat.substring(spaceIndex+1);
                                     X509Certificate cert = GenerateCertificate.decodeCertificate(certificate);
-
-                                    doc.insertString(doc.getLength(), "Subject: " + cert.getSubjectDN().toString() + "\n", attributes);
-                                    doc.insertString(doc.getLength(), "Issuer: " + cert.getIssuerDN().toString() + "\n", attributes);
-                                    doc.insertString(doc.getLength(), "Serial Number: " + cert.getSerialNumber() + "\n", attributes);
-
+                                    System.out.println("Subject: " + cert.getSubjectDN().toString());
+                                    System.out.println("Issuer: " + cert.getIssuerDN().toString());
+                                    System.out.println("Serial Number: " + cert.getSerialNumber());
                                     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                                    doc.insertString(doc.getLength(), "Valid From: " + dateFormat.format(cert.getNotBefore()) + "\n", attributes);
-                                    doc.insertString(doc.getLength(), "Valid To: " + dateFormat.format(cert.getNotAfter()) + "\n", attributes);
+                                    System.out.println("Valid From: " + dateFormat.format(cert.getNotBefore()));
+                                    System.out.println("Valid To: " + dateFormat.format(cert.getNotAfter()));
+                                    System.out.println("\nPublic Key:\n" + cert.getPublicKey());
 
-                                    doc.insertString(doc.getLength(), "\nPublic Key:\n" + cert.getPublicKey() + "\n", attributes);
+                                    doc.insertString(doc.getLength(), "**Certificate generated**" + "\n", attributes);
 
                                 } catch (BadLocationException e) {
                                     e.printStackTrace();
@@ -208,13 +203,14 @@ public class ChatClient {
 
                                 try {
                                     doc.insertString(doc.getLength(), msgFromChat + "\n", attributes);
-
+                                    count++;
                                 } catch (BadLocationException e) {
                                     e.printStackTrace();
                                 }
                             }
                         });
-                        break;
+//                        boolean breakthis = count == 2;
+
                     }
                     else {
                         SwingUtilities.invokeLater(new Runnable() {
@@ -248,13 +244,13 @@ public class ChatClient {
 //            System.exit(1);
 //        }
         Scanner scan = new Scanner(System.in);
-        // first ask for the authentication message
+        System.out.println("Enter userName: ");
+        String userName = scan.nextLine();
         System.out.println("Enter serverAddress: ");
         String serverAddress = scan.nextLine();
         System.out.println("Enter serverPort: ");
         int serverPort = scan.nextInt();
-        System.out.println("Enter userName: ");
-        String userName = scan.nextLine();
+
 
 //        String serverAddress = args[0];
 //        int serverPort = Integer.parseInt(args[1]);
@@ -274,3 +270,4 @@ public class ChatClient {
     }
 
 }
+
