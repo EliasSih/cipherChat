@@ -9,6 +9,7 @@ import java.awt.image.BufferedImage;
 import javax.imageio.ImageIO;
 import java.util.Random;
 
+
 public class ChatClient {
     private BufferedReader in;
     private PrintWriter out;
