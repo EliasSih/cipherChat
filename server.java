@@ -1,7 +1,9 @@
 import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class server {
     private static List<PrintWriter> clientWriters = new ArrayList<>();
@@ -43,6 +45,9 @@ class ClientHandler implements Runnable {
     private Socket clientSocket;
     private PrintWriter out;
 
+    // Define the HashMap to store public keys as base64 strings
+    public static Map<String, String> clientPublicKeys = new HashMap<>();
+
     public ClientHandler(Socket clientSocket) {
         this.clientSocket = clientSocket;
         try {
@@ -58,10 +63,44 @@ class ClientHandler implements Runnable {
             String message;
 
             while ((message = in.readLine()) != null) {
-                System.out.println("Received from client: " + message);
+                // Check for "@key" prefix to store the key
+                if (message.startsWith("@key:")) {
+                    // Split the message to get the client name and encoded public key
+                    String[] parts = message.split(":", 3);
 
-                // Broadcast the message to all connected clients
-                server.broadcastMessage(message);
+                    if (parts.length == 3) {
+                        String clientName = parts[1];
+                        String encodedPublicKey = parts[2];
+
+                        // Directly store the base64 encoded public key in the map
+                        clientPublicKeys.put(clientName, encodedPublicKey);
+                        System.out.println("Stored public key for client: " + clientName + ":" + clientPublicKeys.get("Eli"));
+                    } else {
+                        System.out.println("Invalid key message format");
+                    }
+                }
+                // Check for "@getKey" request
+                else if (message.startsWith("@getKey:")) {
+                    String[] parts = message.split(":", 2);
+                    if (parts.length == 2) {
+                        String requestedClientName = parts[1];
+                        String requestedPublicKey = clientPublicKeys.get(requestedClientName);
+
+                        if (requestedPublicKey != null) {
+                            // Send the already base64-encoded public key to the requesting client
+                            out.println("@keyResponse:" + requestedClientName + ":" + requestedPublicKey);
+
+                            System.out.println("@keyResponse:" + requestedClientName + ":" + requestedPublicKey);
+
+                        } else {
+                            // Optionally handle the case where the requested public key doesn't exist
+                            out.println("Error: Public key for " + requestedClientName + " not found.");
+                        }
+                    }
+                } else {
+                    // Handle as a regular message
+                    server.broadcastMessage(message);
+                }
             }
 
             // Close the connections
@@ -71,4 +110,5 @@ class ClientHandler implements Runnable {
             e.printStackTrace();
         }
     }
+
 }
