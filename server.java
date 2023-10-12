@@ -94,7 +94,7 @@ class ClientHandler implements Runnable {
 
                         } else {
                             // Optionally handle the case where the requested public key doesn't exist
-                            out.println("Error: Public key for " + requestedClientName + " not found.");
+                            out.println("Err: Public key for " + requestedClientName + " not found.");
                         }
                     }
                 } else {

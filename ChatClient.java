@@ -185,7 +185,9 @@ public class ChatClient {
         Socket socket = new Socket(serverAddress, serverPort);
         in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         out = new PrintWriter(socket.getOutputStream(), true);
-        System.out.println("Connected to server...");
+        System.out.println("connected to server...");
+        System.out.println("connected to server...");
+
     }
 
     private void startReceivingMessages() {
