@@ -1,9 +1,12 @@
+import javax.crypto.Cipher;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.*;
 import java.net.*;
 import javax.swing.text.*;
+import java.security.*;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.awt.image.BufferedImage;
 import javax.imageio.ImageIO;
@@ -18,9 +21,18 @@ public class ChatClient {
     private JTextPane textPane = new JTextPane();
     private DefaultStyledDocument doc = new DefaultStyledDocument();
     private String secretKey = "donotspeakAboutTHIS";
+    private PrivateKey privateKey;
+    private PublicKey publicKey;
+    private PublicKey receiverPublicKey;
+    private String currentReceiver = null;
+    private String lastReceiverName = null;
     private String userName;
     private Color userColor;
     private boolean textFieldEmpty = true;
+    private final Object keyLock = new Object();
+    private String latestMessage = null;
+
+
 
     public ChatClient(String serverAddress, int serverPort, String userName) {
         this.userName = userName;
@@ -77,6 +89,7 @@ public class ChatClient {
                 }
             }
         });
+
     }
 
     private void setPlaceholderText() {
@@ -91,10 +104,54 @@ public class ChatClient {
     }
 
     private void sendMessage() {
+
         String message = textField.getText();
+        latestMessage = userName + ": " +message.replaceFirst("@[^:]+:", "");
         String encryptedMessage = AES_Enctyption.encrypt(userName + ": " + message, secretKey);
-        out.println("ENCRYPTED:" + encryptedMessage);
+
+//        out.println("ENCRYPTED:" + encryptedMessage);
         textField.setText("");
+
+        try {
+
+            System.out.println("message:\n"+ message.trim());
+            // Check if the message specifies a receiver with '@'
+            if (message.trim().startsWith("@")) {
+                int colonIndex = message.indexOf(":");
+                if (colonIndex > 0) {
+                    currentReceiver = message.substring(1, colonIndex); // Extract receiver name
+                    lastReceiverName = currentReceiver; // Update last used receiver's name
+                    message = message.substring(colonIndex + 1); // Strip out the receiver's name from the actual message
+                }
+            } else if (lastReceiverName != null) {
+                currentReceiver = lastReceiverName;
+            } else {
+                System.out.println("Receiver's name not specified. Please specify a receiver's name using '@receiverName:MessageContent'.");
+                return;
+            }
+
+            if (receiverPublicKey == null) {
+                System.out.println("Receiver's public key not set. Requesting public key from the server.");
+
+                // Send a request to the server to get the receiver's public key
+                out.println("@getKey:" + currentReceiver);
+
+                synchronized (keyLock) {
+                    keyLock.wait();  // Block and wait until we get notified (when the key arrives)
+                }
+            }
+
+            // hashing and encryption procedure
+            String messageHash = hashing.HashString(message);
+            String encryptedPayload = RSA_encryption.encrypt(messageHash, encryptedMessage, secretKey, receiverPublicKey);
+            out.println("ENCRYPTED:" + encryptedPayload);
+//            out.flush();
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
+
     }
     
     private void attachImage() {
@@ -131,8 +188,24 @@ public class ChatClient {
         readerThread.start();
     }
 
+    private void setUpRsaKeys() throws NoSuchAlgorithmException {
+        //Generate private and public key
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+        keyGen.initialize(2048);
+        KeyPair pair = keyGen.generateKeyPair();
+        this.privateKey = pair.getPrivate();
+        this.publicKey = pair.getPublic();
+        System.out.println("public Key" + publicKey);
+
+        // Send the public key to the server
+        String encodedPublicKey = Base64.getEncoder().encodeToString(publicKey.getEncoded());
+        out.println("@key:" + userName + ":" + encodedPublicKey);
+    }
+
     // Inside the IncomingReader class
     class IncomingReader implements Runnable {
+
+        private String decryptedMessage;
         public void run() {
             try {
                 while (true) {
@@ -141,10 +214,64 @@ public class ChatClient {
                         break; // Server has closed the connection
                     }
 
+                    String message = line;
+
+                    try {
+                        if (message.startsWith("@keyResponse:")) {
+                            String[] parts = message.split(":", 3);
+                            if (parts.length == 3) {
+                                String sender = parts[1];
+                                String base64Key = parts[2];
+
+                                if (sender.equals(currentReceiver)) {
+                                    byte[] decodedKey = Base64.getDecoder().decode(base64Key);
+                                    X509EncodedKeySpec spec = new X509EncodedKeySpec(decodedKey);
+                                    KeyFactory kf = KeyFactory.getInstance("RSA");
+                                    receiverPublicKey = kf.generatePublic(spec);
+
+                                    synchronized (keyLock) {
+                                        keyLock.notify(); // Wake up any waiting threads
+                                    }
+
+                                    continue; // Move on to the next iteration, we don't want to display the key response
+                                }
+                            }
+                        } else if (!message.startsWith("@getKey:")) { // Exclude any special commands here
+                            // Try to decrypt the message
+                            try {
+
+                                message = message.replaceAll("ENCRYPTED:", "");
+                                String partiallyDecrypted = RSA_encryption.decrypt(message, privateKey);
+
+//                              extract the private key here:
+                                String [] payload = partiallyDecrypted.split(":");
+
+                                decryptedMessage = AES_Enctyption.decrypt(payload[1], payload[2]);
+
+
+                                System.out.println("Decrypted message: " + decryptedMessage);
+                            } catch (Exception e) {
+                                // If there's an error, just use the original message
+                                e.printStackTrace();
+                                System.out.println("Failed to decrypt");
+                                // latest message to front-end
+                            }
+                        }
+                    }
+                    catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+
+
                     if (line.startsWith("ENCRYPTED:")) {
+
+                        //first decrypt with public key
+
+
                         // Handle encrypted messages
                         String encryptedMessage = line.substring("ENCRYPTED:".length());
-                        String decryptedMessage = AES_Enctyption.decrypt(encryptedMessage, secretKey);
+
 
                         SwingUtilities.invokeLater(new Runnable() {
                             public void run() {
@@ -153,7 +280,12 @@ public class ChatClient {
                                 StyleConstants.setForeground(attributes, userColor);
 
                                 try {
-                                    doc.insertString(doc.getLength(), decryptedMessage + "\n", attributes);
+
+                                    if(decryptedMessage != null)
+                                        doc.insertString(doc.getLength(), decryptedMessage + "\n", attributes);
+                                    else
+                                        doc.insertString(doc.getLength(), latestMessage + "\n", attributes);
+
                                 } catch (BadLocationException e) {
                                     e.printStackTrace();
                                 }
@@ -228,7 +360,11 @@ public class ChatClient {
         try {
             client.setUpNetworking(serverAddress, serverPort);
             client.startReceivingMessages();
-        } catch (IOException e) {
+
+            //send public key to server:
+            client.setUpRsaKeys();
+
+        } catch (IOException | NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
     }
