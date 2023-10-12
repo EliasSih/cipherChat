@@ -106,7 +106,8 @@ public class ChatClient {
     private void sendMessage() {
 
         String message = textField.getText();
-        latestMessage = userName + ": " +message.replaceFirst("@[^:]+:", "");
+        this.latestMessage = userName + ": " +message.replaceFirst("@[^:]+:", "");
+        System.out.println("The latest: "+latestMessage);
         String encryptedMessage = AES_Enctyption.encrypt(userName + ": " + message, secretKey);
 
 //        out.println("ENCRYPTED:" + encryptedMessage);
@@ -169,7 +170,11 @@ public class ChatClient {
                 String encodedImage = Base64.getEncoder().encodeToString(imageBytes);
                 String encryptedImage = AES_Enctyption.encrypt(encodedImage, secretKey);
 
-                out.println("IMAGE:" + encryptedImage);
+                String imageHash = hashing.HashString(encodedImage);
+                String encryptedImgPayload = RSA_encryption.encrypt(imageHash, encryptedImage, secretKey, receiverPublicKey);
+
+                out.println("IMAGE:" + encryptedImgPayload);
+
             } catch (Exception ex) {
                 ex.printStackTrace();
             }
@@ -206,6 +211,8 @@ public class ChatClient {
     class IncomingReader implements Runnable {
 
         private String decryptedMessage;
+
+        private String decryptedImage;
         public void run() {
             try {
                 while (true) {
@@ -236,26 +243,6 @@ public class ChatClient {
                                     continue; // Move on to the next iteration, we don't want to display the key response
                                 }
                             }
-                        } else if (!message.startsWith("@getKey:")) { // Exclude any special commands here
-                            // Try to decrypt the message
-                            try {
-
-                                message = message.replaceAll("ENCRYPTED:", "");
-                                String partiallyDecrypted = RSA_encryption.decrypt(message, privateKey);
-
-//                              extract the private key here:
-                                String [] payload = partiallyDecrypted.split(":");
-
-                                decryptedMessage = AES_Enctyption.decrypt(payload[1], payload[2]);
-
-
-                                System.out.println("Decrypted message: " + decryptedMessage);
-                            } catch (Exception e) {
-                                // If there's an error, just use the original message
-                                e.printStackTrace();
-                                System.out.println("Failed to decrypt");
-                                // latest message to front-end
-                            }
                         }
                     }
                     catch (Exception e) {
@@ -267,7 +254,27 @@ public class ChatClient {
                     if (line.startsWith("ENCRYPTED:")) {
 
                         //first decrypt with public key
+                        try {
 
+                            message = message.replaceAll("ENCRYPTED:", "");
+
+                            String partiallyDecrypted = RSA_encryption.decrypt(message, privateKey);
+
+//                              extract the private key here:
+                            String [] payload = partiallyDecrypted.split(":");
+
+                            decryptedMessage = AES_Enctyption.decrypt(payload[1], payload[2]);
+
+
+                            System.out.println("Decrypted message: " + decryptedMessage);
+                        } catch (Exception e) {
+                            // If there's an error, just use the original message
+                            e.printStackTrace();
+                            System.out.println("Failed to decrypt");
+                            decryptedMessage = null;
+
+                            // latest message to front-end
+                        }
 
                         // Handle encrypted messages
                         String encryptedMessage = line.substring("ENCRYPTED:".length());
@@ -282,9 +289,10 @@ public class ChatClient {
                                 try {
 
                                     if(decryptedMessage != null)
-                                        doc.insertString(doc.getLength(), decryptedMessage + "\n", attributes);
+                                        doc.insertString(doc.getLength(), decryptedMessage.replaceFirst("@[^:]+:", "") + "\n", attributes);
                                     else
                                         doc.insertString(doc.getLength(), latestMessage + "\n", attributes);
+                                        System.out.println("latest pushed to front-end:" + latestMessage);
 
                                 } catch (BadLocationException e) {
                                     e.printStackTrace();
@@ -293,8 +301,30 @@ public class ChatClient {
                         });
                     } else if (line.startsWith("IMAGE:")) {
                         // Handle image messages
-                        String encryptedImage = line.substring("IMAGE:".length());
-                        String decryptedImage = AES_Enctyption.decrypt(encryptedImage, secretKey);
+
+                        String imagePayload = line;
+
+                        try {
+
+                            imagePayload = imagePayload.replaceAll("IMAGE:", "");
+
+                            String RsaDecrypted = RSA_encryption.decrypt(imagePayload, privateKey);
+
+//                              extract the private key here:
+                            String [] payloadComponents = RsaDecrypted.split(":");
+
+                            decryptedImage = AES_Enctyption.decrypt(payloadComponents[1], payloadComponents[2]);
+
+
+                            System.out.println("Decrypted message: " + decryptedImage);
+                        } catch (Exception e) {
+                            // If there's an error, just use the original message
+                            e.printStackTrace();
+                            System.out.println("Failed to decrypt");
+                            decryptedImage = null;
+
+                            // latest message to front-end
+                        }
 
                         SwingUtilities.invokeLater(new Runnable() {
                             public void run() {
