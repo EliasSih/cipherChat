@@ -1,16 +1,22 @@
-import javax.crypto.Cipher;
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.*;
-import java.io.*;
-import java.net.*;
-import javax.swing.text.*;
-import java.security.*;
-import java.security.spec.X509EncodedKeySpec;
-import java.util.Base64;
-import java.awt.image.BufferedImage;
 import javax.imageio.ImageIO;
+import javax.swing.*;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DefaultStyledDocument;
+import javax.swing.text.SimpleAttributeSet;
+import javax.swing.text.StyleConstants;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
+import java.awt.image.BufferedImage;
+import java.io.*;
+import java.net.Socket;
+import java.security.*;
+import java.security.cert.X509Certificate;
+import java.util.Base64;
 import java.util.Random;
+import java.util.Scanner;
 
 
 public class ChatClient {
@@ -21,6 +27,7 @@ public class ChatClient {
     private JTextPane textPane = new JTextPane();
     private DefaultStyledDocument doc = new DefaultStyledDocument();
     private String secretKey = "donotspeakAboutTHIS";
+    private X509Certificate certificate;
     private PrivateKey privateKey;
     private PublicKey publicKey;
     private PublicKey receiverPublicKey;
@@ -152,7 +159,7 @@ public class ChatClient {
 //            out.flush();
 
         } catch (Exception ex) {
-            ex.printStackTrace();
+            closeEverything(out,in);
         }
 
 
@@ -180,7 +187,7 @@ public class ChatClient {
                 out.println("IMAGE:" + encryptedImgPayload);
 
             } catch (Exception ex) {
-                ex.printStackTrace();
+                closeEverything(out,in);
             }
         }
     }
@@ -234,13 +241,11 @@ public class ChatClient {
                             String[] parts = message.split(":", 3);
                             if (parts.length == 3) {
                                 String sender = parts[1];
-                                String base64Key = parts[2];
+                                String base64Certificate = parts[2];
 
                                 if (sender.equals(currentReceiver)) {
-                                    byte[] decodedKey = Base64.getDecoder().decode(base64Key);
-                                    X509EncodedKeySpec spec = new X509EncodedKeySpec(decodedKey);
-                                    KeyFactory kf = KeyFactory.getInstance("RSA");
-                                    receiverPublicKey = kf.generatePublic(spec);
+                                    certificate = GenerateCertificate.decodeCertificate(base64Certificate);
+                                    receiverPublicKey = certificate.getPublicKey();
 
                                     synchronized (keyLock) {
                                         keyLock.notify(); // Wake up any waiting threads
@@ -252,7 +257,7 @@ public class ChatClient {
                         }
                     }
                     catch (Exception e) {
-                        e.printStackTrace();
+                        closeEverything(out,in);
                     }
 
 
@@ -275,7 +280,7 @@ public class ChatClient {
                             System.out.println("Decrypted message: " + decryptedMessage);
                         } catch (Exception e) {
                             // If there's an error, just use the original message
-                            e.printStackTrace();
+//                            e.printStackTrace();
                             System.out.println("Failed to decrypt");
                             decryptedMessage = null;
 
@@ -301,7 +306,7 @@ public class ChatClient {
                                         System.out.println("latest pushed to front-end:" + latestMessage);
 
                                 } catch (BadLocationException e) {
-                                    e.printStackTrace();
+                                    closeEverything(out,in);
                                 }
                             }
                         });
@@ -388,20 +393,28 @@ public class ChatClient {
                     }
                 }
             } catch (IOException e) {
-                e.printStackTrace();
+                closeEverything(out,in);
             }
         }
     }
 
     public static void main(String[] args) {
-        if (args.length != 3) {
-            System.err.println("Usage: java ChatClient <server_address> <server_port> <username>");
-            System.exit(1);
-        }
+//        if (args.length != 3) {
+//            System.err.println("Usage: java ChatClient <server_address> <server_port> <username>");
+//            System.exit(1);
+//        }
+        Scanner scan = new Scanner(System.in);
+        System.out.print("serverAdress:");
+        String serverAddress = scan.nextLine();
+        System.out.print("UserName:");
+        String userName = scan.nextLine();
+        System.out.print("PortNumber:");
+        int serverPort = scan.nextInt();
 
-        String serverAddress = args[0];
-        int serverPort = Integer.parseInt(args[1]);
-        String userName = args[2];
+
+//        String serverAddress = args[0];
+//        int serverPort = Integer.parseInt(args[1]);
+//        String userName = args[2];
 
         ChatClient client = new ChatClient(serverAddress, serverPort, userName);
         client.frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -415,6 +428,20 @@ public class ChatClient {
             client.setUpRsaKeys();
 
         } catch (IOException | NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void closeEverything(PrintWriter out, BufferedReader in) {
+        try {
+            if (in != null) {
+                in.close();
+            }
+            if (out != null) {
+                out.close();
+            }
+            
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
