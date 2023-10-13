@@ -32,6 +32,8 @@ public class ChatClient {
     private final Object keyLock = new Object();
     private String latestMessage = null;
 
+    private byte[] latestImage = null;
+
 
 
     public ChatClient(String serverAddress, int serverPort, String userName) {
@@ -167,6 +169,7 @@ public class ChatClient {
                 ImageIO.write(image, "PNG", baos);
 
                 byte[] imageBytes = baos.toByteArray();
+                latestImage = imageBytes;
                 String encodedImage = Base64.getEncoder().encodeToString(imageBytes);
                 String encryptedImage = AES_Enctyption.encrypt(encodedImage, secretKey);
 
@@ -331,8 +334,18 @@ public class ChatClient {
                         SwingUtilities.invokeLater(new Runnable() {
                             public void run() {
                                 try {
-                                    byte[] imageBytes = Base64.getDecoder().decode(decryptedImage);
-                                    BufferedImage receivedImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
+
+                                    byte[] imageBytes;
+                                    BufferedImage receivedImage;
+
+                                    if(decryptedImage != null){
+                                        imageBytes = Base64.getDecoder().decode(decryptedImage);
+                                        receivedImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
+                                    }
+                                    else {
+                                        imageBytes = Base64.getDecoder().decode(latestImage);
+                                        receivedImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
+                                    }
 
                                     // Define your desired maximum width and height
                                     int maxWidth = 400;
@@ -364,6 +377,7 @@ public class ChatClient {
                                     textPane.insertIcon(new ImageIcon(resizedImage));
                                 } catch (Exception ex) {
                                     ex.printStackTrace();
+
                                 }
                             }
                         });
