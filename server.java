@@ -76,19 +76,25 @@ class ClientHandler implements Runnable {
                 // generate the certificate here
                 if (message.startsWith("@key:")) {
                     // Split the message to get the client name and encoded public key
-                    String[] parts = message.split(":", 3);
+                    String[] parts = message.split(":",3);
 
                     if (parts.length == 3) {
                         String clientName = parts[1];
                         String encodedPublicKey = parts[2];
-                        // generate the certificate
-                        PublicKey publicKey = decodePublicKey(encodedPublicKey);
-                        X509Certificate certificate = GenerateCertificate.issueCertificate(publicKey);
+                        if (clientCertificates.containsKey(clientName)){
+                            out.println("@Username: "+ clientName +" already exist. Please insert different username.");
+                            System.out.println("Username "+ clientName +" exists.");
+                        }
+                        else{
+                            // generate the certificate
+                            PublicKey publicKey = decodePublicKey(encodedPublicKey);
+                            X509Certificate certificate = GenerateCertificate.issueCertificate(publicKey);
 
-                        // Directly store the base64 encoded public key in the map
-                        clientCertificates.put(clientName, certificate);
-//                        clientPublicKeys.put(clientName, encodedPublicKey);
-                        System.out.println("Stored certificate for client: " + clientName + ":" + clientCertificates.get(clientName));
+                            // Directly store the base64 encoded public key in the map
+                            clientCertificates.put(clientName, certificate);
+                            System.out.println("Stored certificate for client: " + clientName + ":" + clientCertificates.get(clientName));
+                        }
+
                     } else {
                         System.out.println("Invalid key message format");
                     }
