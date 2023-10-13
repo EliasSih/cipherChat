@@ -1,3 +1,4 @@
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultStyledDocument;
@@ -6,111 +7,198 @@ import javax.swing.text.StyleConstants;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
+import java.awt.image.BufferedImage;
+import java.io.*;
 import java.net.Socket;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.PublicKey;
-import java.security.SecureRandom;
-import java.security.cert.CertificateException;
+import java.security.*;
 import java.security.cert.X509Certificate;
-import java.text.SimpleDateFormat;
 import java.util.Base64;
 import java.util.Random;
 import java.util.Scanner;
 
+
 public class ChatClient {
     private BufferedReader in;
     private PrintWriter out;
-    private Socket socket;
-    private String certificate;
     private JFrame frame = new JFrame("Secure Chat");
     private JTextField textField = new JTextField(40);
     private JTextPane textPane = new JTextPane();
     private DefaultStyledDocument doc = new DefaultStyledDocument();
     private String secretKey = "donotspeakAboutTHIS";
-    private static String userName;
+    private X509Certificate certificate;
+    private PrivateKey privateKey;
+    private PublicKey publicKey;
+    private PublicKey receiverPublicKey;
+    private String currentReceiver = null;
+    private String lastReceiverName = null;
+    private String userName;
     private Color userColor;
-    private int count =0;
-    
-    public ChatClient(Socket socket, String userName) {
-        this.socket = socket;
-        ChatClient.userName = userName;
-        this.certificate = "";
+    private boolean textFieldEmpty = true;
+    private final Object keyLock = new Object();
+    private String latestMessage = null;
 
+    private byte[] latestImage = null;
+
+
+
+    public ChatClient(String serverAddress, int serverPort, String userName) {
+        this.userName = userName;
         this.userColor = generateRandomColor();
         textPane.setDocument(doc);
         textPane.setEditable(false);
         frame.getContentPane().add(new JScrollPane(textPane), BorderLayout.CENTER);
+
+        // Set a placeholder text for the text field
+        setPlaceholderText();
+
         frame.getContentPane().add(textField, BorderLayout.SOUTH);
+
+        JButton sendButton = new JButton("Send Message");
+        JButton attachButton = new JButton("Send Image");
+        JPanel buttonPanel = new JPanel(new FlowLayout());
+        buttonPanel.add(sendButton);
+        buttonPanel.add(attachButton);
+        frame.setTitle("Secure Chat - " + userName);
+        frame.getContentPane().add(buttonPanel, BorderLayout.NORTH);
+
         frame.pack();
 
         textField.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                String message = textField.getText();
-                sendMessage(message);
-                textField.setText("");
+                sendMessage();
             }
         });
+
+        sendButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                sendMessage();
+            }
+        });
+
+        attachButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                attachImage();
+            }
+        });
+
+        // Add a focus listener to handle the placeholder text
+        textField.addFocusListener(new FocusListener() {
+            public void focusGained(FocusEvent e) {
+                if (textFieldEmpty) {
+                    textField.setText("");
+                    textField.setForeground(Color.BLACK);
+                    textFieldEmpty = false;
+                }
+            }
+
+            public void focusLost(FocusEvent e) {
+                if (textField.getText().isEmpty()) {
+                    setPlaceholderText();
+                }
+            }
+        });
+
     }
-    
+
+    private void setPlaceholderText() {
+        textField.setText("Type message here");
+        textField.setForeground(Color.GRAY);
+        textFieldEmpty = true;
+    }
+
     private Color generateRandomColor() {
         Random rand = new Random();
         return new Color(rand.nextInt(256), rand.nextInt(256), rand.nextInt(256));
     }
 
+    private void sendMessage() {
 
+        String message = textField.getText();
+        this.latestMessage = userName + ": " +message.replaceFirst("@[^:]+:", "");
+        System.out.println("The latest: "+latestMessage);
+        String encryptedMessage = AES_Enctyption.encrypt(userName + ": " + message, secretKey);
 
-    /**
-     * send messages to the CA
-     * and to other clients
-     */
-    private void sendMessage(String messageToSend) {
+//        out.println("ENCRYPTED:" + encryptedMessage);
+        textField.setText("");
+
         try {
-            if (messageToSend.equals("generate")){
-                out.println(messageToSend + " " + encodedPublicKey());
-            }
-            else if (messageToSend.equals("verify")){
-                out.println(messageToSend + " " + certificate);
-            }
-            else {
 
-                String msg = userName + ": " + messageToSend;
-                String hashedMessage = hashing.encryptThisString(msg);
-                String encryptedMessage = AES_Enctyption.encrypt(msg +"#"+hashedMessage, secretKey);
-                out.println(encryptedMessage);
+            System.out.println("message:\n"+ message.trim());
+            // Check if the message specifies a receiver with '@'
+            if (message.trim().startsWith("@")) {
+                int colonIndex = message.indexOf(":");
+                if (colonIndex > 0) {
+                    currentReceiver = message.substring(1, colonIndex); // Extract receiver name
+                    lastReceiverName = currentReceiver; // Update last used receiver's name
+                    message = message.substring(colonIndex + 1); // Strip out the receiver's name from the actual message
+                }
+            } else if (lastReceiverName != null) {
+                currentReceiver = lastReceiverName;
+            } else {
+                System.out.println("Receiver's name not specified. Please specify a receiver's name using '@receiverName:MessageContent'.");
+                return;
             }
+
+            if (receiverPublicKey == null) {
+                System.out.println("Receiver's public key not set. Requesting public key from the server.");
+
+                // Send a request to the server to get the receiver's public key
+                out.println("@getKey:" + currentReceiver);
+
+                synchronized (keyLock) {
+                    keyLock.wait();  // Block and wait until we get notified (when the key arrives)
+                }
+            }
+
+            // hashing and encryption procedure
+            String messageHash = hashing.HashString(message);
+            String encryptedPayload = RSA_encryption.encrypt(messageHash, encryptedMessage, secretKey, receiverPublicKey);
+            out.println("ENCRYPTED:" + encryptedPayload);
+//            out.flush();
+
         } catch (Exception ex) {
-            closeEverything(socket, out, in);
+            closeEverything(out,in);
+        }
+
+
+    }
+
+    private void attachImage() {
+        JFileChooser fileChooser = new JFileChooser();
+        int result = fileChooser.showOpenDialog(frame);
+
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File selectedFile = fileChooser.getSelectedFile();
+            try {
+                BufferedImage image = ImageIO.read(selectedFile);
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                ImageIO.write(image, "PNG", baos);
+
+                byte[] imageBytes = baos.toByteArray();
+                latestImage = imageBytes;
+                String encodedImage = Base64.getEncoder().encodeToString(imageBytes);
+                String encryptedImage = AES_Enctyption.encrypt(encodedImage, secretKey);
+
+                String imageHash = hashing.HashString(encodedImage);
+                String encryptedImgPayload = RSA_encryption.encryptKeyNotLoad(imageHash, encryptedImage, secretKey, receiverPublicKey);
+
+                out.println("IMAGE:" + encryptedImgPayload);
+
+            } catch (Exception ex) {
+                closeEverything(out,in);
+            }
         }
     }
 
-    /**
-     *  the public key for the CA
-     */
-
-    public PublicKey generatePublicKey() throws Exception{
-        // Generate a subject's key pair
-        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-        keyPairGenerator.initialize(1024, new SecureRandom());
-        KeyPair keyPair = keyPairGenerator.generateKeyPair();
-        return keyPair.getPublic();
-    }
-    public String encodedPublicKey() throws Exception {
-
-        PublicKey publicKey = generatePublicKey();
-        byte[] publicKeyBytes = publicKey.getEncoded();
-        String EncodedPublicKey = Base64.getEncoder().encodeToString(publicKeyBytes);
-        return EncodedPublicKey;
-    }
-
-    private void setUpNetworking() throws IOException {
+    private void setUpNetworking(String serverAddress, int serverPort) throws IOException {
+        Socket socket = new Socket(serverAddress, serverPort);
         in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         out = new PrintWriter(socket.getOutputStream(), true);
-        System.out.println("Connected to server...");
+        System.out.println("connected to server...");
+        System.out.println("connected to server...");
+
     }
 
     private void startReceivingMessages() {
@@ -118,171 +206,230 @@ public class ChatClient {
         readerThread.start();
     }
 
-    /**
-     * Listens for messages from the server (coming from the other client)
-     * decrypt the cipher text then
-     * split the message from the hash
-     * check the hash
-     */
+    private void setUpRsaKeys() throws NoSuchAlgorithmException {
+        //Generate private and public key
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+        keyGen.initialize(2048);
+        KeyPair pair = keyGen.generateKeyPair();
+        this.privateKey = pair.getPrivate();
+        this.publicKey = pair.getPublic();
+        System.out.println("public Key" + publicKey);
+
+        // Send the public key to the server
+        String encodedPublicKey = Base64.getEncoder().encodeToString(publicKey.getEncoded());
+        out.println("@key:" + userName + ":" + encodedPublicKey);
+    }
+
+    // Inside the IncomingReader class
     class IncomingReader implements Runnable {
+
+        private String decryptedMessage;
+
+        private String decryptedImage;
         public void run() {
             try {
                 while (true) {
-                    String encryptedMessage = in.readLine();
-                    if (encryptedMessage == null) {
+                    String line = in.readLine();
+                    if (line == null) {
                         break; // Server has closed the connection
                     }
 
-                    String decryptedMessage = AES_Enctyption.decrypt(encryptedMessage, secretKey);
-                    String[] parts = decryptedMessage.split("#");
-                    if (hashing.encryptThisString(decryptedMessage.substring(0,decryptedMessage.indexOf('#'))).equals(parts[1])) {
-                        System.out.println("Hash Value for message is Valid");
-                    } else {
-                        System.out.println("Hash Value for message is Invalid");
-                    }
+                    String message = line;
 
-                    SwingUtilities.invokeLater(new Runnable() {
-                        public void run() {
-                            SimpleAttributeSet attributes = new SimpleAttributeSet();
-                            StyleConstants.setAlignment(attributes, StyleConstants.ALIGN_LEFT);
-                            StyleConstants.setForeground(attributes, userColor);
+                    try {
+                        if (message.startsWith("@keyResponse:")) {
+                            String[] parts = message.split(":", 3);
+                            if (parts.length == 3) {
+                                String sender = parts[1];
+                                String base64Certificate = parts[2];
 
-                            try {
-                                doc.insertString(doc.getLength(), parts[0] + "\n", attributes);
-                            } catch (BadLocationException e) {
-                                e.printStackTrace();
+                                if (sender.equals(currentReceiver)) {
+                                    certificate = GenerateCertificate.decodeCertificate(base64Certificate);
+                                    receiverPublicKey = certificate.getPublicKey();
+
+                                    synchronized (keyLock) {
+                                        keyLock.notify(); // Wake up any waiting threads
+                                    }
+
+                                    continue; // Move on to the next iteration, we don't want to display the key response
+                                }
                             }
                         }
-                    });
+                    }
+                    catch (Exception e) {
+                        closeEverything(out,in);
+                    }
+
+
+
+                    if (line.startsWith("ENCRYPTED:")) {
+
+                        //first decrypt with public key
+                        try {
+
+                            message = message.replaceAll("ENCRYPTED:", "");
+
+                            String partiallyDecrypted = RSA_encryption.decrypt(message, privateKey);
+
+//                              extract the private key here:
+                            String [] payload = partiallyDecrypted.split(":");
+
+                            decryptedMessage = AES_Enctyption.decrypt(payload[1], payload[2]);
+
+
+                            System.out.println("Decrypted message: " + decryptedMessage);
+                        } catch (Exception e) {
+                            // If there's an error, just use the original message
+//                            e.printStackTrace();
+                            System.out.println("Failed to decrypt");
+                            decryptedMessage = null;
+
+                            // latest message to front-end
+                        }
+
+                        // Handle encrypted messages
+                        String encryptedMessage = line.substring("ENCRYPTED:".length());
+
+
+                        SwingUtilities.invokeLater(new Runnable() {
+                            public void run() {
+                                SimpleAttributeSet attributes = new SimpleAttributeSet();
+                                StyleConstants.setAlignment(attributes, StyleConstants.ALIGN_LEFT);
+                                StyleConstants.setForeground(attributes, userColor);
+
+                                try {
+
+                                    if(decryptedMessage != null)
+                                        doc.insertString(doc.getLength(), decryptedMessage.replaceFirst("@[^:]+:", "") + "\n", attributes);
+                                    else
+                                        doc.insertString(doc.getLength(), latestMessage + "\n", attributes);
+                                        System.out.println("latest pushed to front-end:" + latestMessage);
+
+                                } catch (BadLocationException e) {
+                                    closeEverything(out,in);
+                                }
+                            }
+                        });
+                    } else if (line.startsWith("IMAGE:")) {
+                        // Handle image messages
+
+                        String imagePayload = line;
+
+                        try {
+
+                            imagePayload = imagePayload.replaceAll("IMAGE:", "");
+
+                            String RsaDecrypted = RSA_encryption.decryptKeyNotLoad(imagePayload, privateKey);
+
+//                              extract the private key here:
+                            String [] payloadComponents = RsaDecrypted.split(":");
+
+                            decryptedImage = AES_Enctyption.decrypt(payloadComponents[1], payloadComponents[2]);
+
+
+                            System.out.println("Decrypted Image");
+
+                        } catch (Exception e) {
+                            // If there's an error, just use the original message
+//                            e.printStackTrace();
+                            System.out.println("Failed to decrypt image");
+                            decryptedImage = null;
+
+                            // latest message to front-end
+                        }
+
+                        SwingUtilities.invokeLater(new Runnable() {
+                            public void run() {
+                                try {
+
+                                    byte[] imageBytes;
+                                    BufferedImage receivedImage;
+
+                                    if(decryptedImage != null){
+                                        imageBytes = Base64.getDecoder().decode(decryptedImage);
+                                        receivedImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
+                                    }
+                                    else {
+                                        imageBytes = latestImage;
+                                        receivedImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
+                                    }
+
+                                    // Define your desired maximum width and height
+                                    int maxWidth = 400;
+                                    int maxHeight = 400;
+
+                                    // Calculate new dimensions while maintaining aspect ratio
+                                    int newWidth, newHeight;
+                                    if (receivedImage.getWidth() > receivedImage.getHeight()) {
+                                        newWidth = maxWidth;
+                                        newHeight = (maxWidth * receivedImage.getHeight()) / receivedImage.getWidth();
+                                    } else {
+                                        newHeight = maxHeight;
+                                        newWidth = (maxHeight * receivedImage.getWidth()) / receivedImage.getHeight();
+                                    }
+
+                                    // Resize the image
+                                    Image scaledImage = receivedImage.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH);
+                                    BufferedImage resizedImage = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_ARGB);
+                                    Graphics2D g2d = resizedImage.createGraphics();
+                                    g2d.drawImage(scaledImage, 0, 0, null);
+                                    g2d.dispose();
+
+                                    SimpleAttributeSet attributes = new SimpleAttributeSet();
+                                    StyleConstants.setAlignment(attributes, StyleConstants.ALIGN_LEFT);
+                                    StyleConstants.setForeground(attributes, userColor);
+                                    doc.insertString(1,"\n",attributes);
+
+                                    doc.insertString(doc.getLength(), "\n", attributes);
+                                    textPane.setCaretPosition(textPane.getDocument().getLength());
+                                    textPane.insertIcon(new ImageIcon(resizedImage));
+                                    doc.insertString(doc.getLength(),"\n",attributes);
+                                } catch (Exception ex) {
+                                    ex.printStackTrace();
+
+                                }
+                            }
+                        });
+                    }
                 }
             } catch (IOException e) {
-                closeEverything(socket, out, in);
+                closeEverything(out,in);
             }
         }
     }
 
-    /**
-     * Reads messages from the CA server
-     */
-
-    private void startReceivingCAMessages() {
-        Thread readerThread = new Thread(new CAIncomingReader());
-        readerThread.start();
-    }
-    class CAIncomingReader implements Runnable {
-        public void run() {
-            try {
-                while (true) {
-                    String msgFromChat = in.readLine();
-                    if ((msgFromChat == null)||(count == 2)) {
-                        break; // Server has closed the connection
-                    }
-                    int spaceIndex = msgFromChat.indexOf(' ');
-                    if (msgFromChat.substring(0,spaceIndex).equals("Certificate:")){
-
-                        SwingUtilities.invokeLater(new Runnable() {
-                            public void run() {
-                                SimpleAttributeSet attributes = new SimpleAttributeSet();
-                                StyleConstants.setAlignment(attributes, StyleConstants.ALIGN_LEFT);
-                                StyleConstants.setForeground(attributes, userColor);
-
-                                try {
-                                    certificate = msgFromChat.substring(spaceIndex+1);
-                                    X509Certificate cert = GenerateCertificate.decodeCertificate(certificate);
-                                    System.out.println("Subject: " + cert.getSubjectDN().toString());
-                                    System.out.println("Issuer: " + cert.getIssuerDN().toString());
-                                    System.out.println("Serial Number: " + cert.getSerialNumber());
-                                    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                                    System.out.println("Valid From: " + dateFormat.format(cert.getNotBefore()));
-                                    System.out.println("Valid To: " + dateFormat.format(cert.getNotAfter()));
-                                    System.out.println("\nPublic Key:\n" + cert.getPublicKey());
-
-                                    doc.insertString(doc.getLength(), "**Certificate generated**" + "\n", attributes);
-
-                                } catch (BadLocationException e) {
-                                    e.printStackTrace();
-                                } catch (CertificateException e) {
-                                    throw new RuntimeException(e);
-                                }
-                            }
-                        });
-
-                    }
-                    else if (msgFromChat.substring(0,spaceIndex).equals("Verified:")){
-                        SwingUtilities.invokeLater(new Runnable() {
-                            public void run() {
-                                SimpleAttributeSet attributes = new SimpleAttributeSet();
-                                StyleConstants.setAlignment(attributes, StyleConstants.ALIGN_LEFT);
-                                StyleConstants.setForeground(attributes, userColor);
-
-                                try {
-                                    doc.insertString(doc.getLength(), msgFromChat + "\n", attributes);
-                                    count++;
-                                } catch (BadLocationException e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                        });
-
-                    }
-                    else {
-                        SwingUtilities.invokeLater(new Runnable() {
-                            public void run() {
-                                SimpleAttributeSet attributes = new SimpleAttributeSet();
-                                StyleConstants.setAlignment(attributes, StyleConstants.ALIGN_LEFT);
-                                StyleConstants.setForeground(attributes, userColor);
-
-                                try {
-                                    doc.insertString(doc.getLength(), msgFromChat + "\n", attributes);
-
-                                } catch (BadLocationException e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                        });
-                    }
-
-
-                }
-                startReceivingMessages();
-            } catch (IOException e) {
-                closeEverything(socket, out, in);
-            }
-        }
-    }
-
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
 //        if (args.length != 3) {
 //            System.err.println("Usage: java ChatClient <server_address> <server_port> <username>");
 //            System.exit(1);
 //        }
         Scanner scan = new Scanner(System.in);
-        System.out.println("Enter userName: ");
-        String userName = scan.nextLine();
-        System.out.println("Enter serverAddress: ");
         String serverAddress = scan.nextLine();
-        System.out.println("Enter serverPort: ");
+        String userName = scan.nextLine();
         int serverPort = scan.nextInt();
 
 
 //        String serverAddress = args[0];
 //        int serverPort = Integer.parseInt(args[1]);
 //        String userName = args[2];
-        Socket socket = new Socket(serverAddress, serverPort);
-        ChatClient client = new ChatClient(socket, userName);
+
+        ChatClient client = new ChatClient(serverAddress, serverPort, userName);
         client.frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         client.frame.setVisible(true);
 
         try {
-            client.setUpNetworking();
-            client.startReceivingCAMessages();
-//            client.startReceivingMessages();
-        } catch (IOException e) {
-            client.closeEverything(client.socket, client.out, client.in);
+            client.setUpNetworking(serverAddress, serverPort);
+            client.startReceivingMessages();
+
+            //send public key to server:
+            client.setUpRsaKeys();
+
+        } catch (IOException | NoSuchAlgorithmException e) {
+            e.printStackTrace();
         }
     }
 
-    public void closeEverything(Socket socket, PrintWriter out, BufferedReader in) {
+    public void closeEverything(PrintWriter out, BufferedReader in) {
         try {
             if (in != null) {
                 in.close();
@@ -290,10 +437,9 @@ public class ChatClient {
             if (out != null) {
                 out.close();
             }
-            if (socket != null) {
-                socket.close();
-            }
+            
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+}
