@@ -154,7 +154,7 @@ public class ChatClient {
 
 
     }
-    
+
     private void attachImage() {
         JFileChooser fileChooser = new JFileChooser();
         int result = fileChooser.showOpenDialog(frame);
@@ -171,7 +171,7 @@ public class ChatClient {
                 String encryptedImage = AES_Enctyption.encrypt(encodedImage, secretKey);
 
                 String imageHash = hashing.HashString(encodedImage);
-                String encryptedImgPayload = RSA_encryption.encrypt(imageHash, encryptedImage, secretKey, receiverPublicKey);
+                String encryptedImgPayload = RSA_encryption.encryptKeyNotLoad(imageHash, encryptedImage, secretKey, receiverPublicKey);
 
                 out.println("IMAGE:" + encryptedImgPayload);
 
@@ -310,7 +310,7 @@ public class ChatClient {
 
                             imagePayload = imagePayload.replaceAll("IMAGE:", "");
 
-                            String RsaDecrypted = RSA_encryption.decrypt(imagePayload, privateKey);
+                            String RsaDecrypted = RSA_encryption.decryptKeyNotLoad(imagePayload, privateKey);
 
 //                              extract the private key here:
                             String [] payloadComponents = RsaDecrypted.split(":");
