@@ -1,5 +1,3 @@
-## Certificate
-
 # GenerateCertificate.java class
 This class imports bouncy castle. For the other clients that rely on this class to function the following has to be done:
 Download the bouncy castle jar file "bcprov-jdk18on-176.jar". Add this to the libraries of the project and select it in the modules. 
