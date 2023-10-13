@@ -103,7 +103,7 @@ class ClientHandler implements Runnable {
                 }
             }
 
-            // Close the connections
+            
             in.close();
             clientSocket.close();
         } catch (IOException e) {
