@@ -17,6 +17,7 @@ import java.security.cert.X509Certificate;
 import java.util.Base64;
 import java.util.Random;
 import java.util.Scanner;
+import java.security.SecureRandom;
 
 
 public class ChatClient {
@@ -26,7 +27,7 @@ public class ChatClient {
     private JTextField textField = new JTextField(40);
     private JTextPane textPane = new JTextPane();
     private DefaultStyledDocument doc = new DefaultStyledDocument();
-    private String secretKey = "donotspeakAboutTHIS";
+    private String secretKey;
     private X509Certificate certificate;
     private PrivateKey privateKey;
     private PublicKey publicKey;
@@ -46,6 +47,7 @@ public class ChatClient {
     public ChatClient(String serverAddress, int serverPort, String userName) {
         this.userName = userName;
         this.userColor = generateRandomColor();
+        this.secretKey = generateRandomString();
         textPane.setDocument(doc);
         textPane.setEditable(false);
         frame.getContentPane().add(new JScrollPane(textPane), BorderLayout.CENTER);
@@ -62,6 +64,7 @@ public class ChatClient {
         buttonPanel.add(attachButton);
         frame.setTitle("Secure Chat - " + userName);
         frame.getContentPane().add(buttonPanel, BorderLayout.NORTH);
+
 
         frame.pack();
 
@@ -100,6 +103,18 @@ public class ChatClient {
             }
         });
 
+    }
+    public static String generateRandomString() {
+        SecureRandom random = new SecureRandom();
+        byte[] randomBytes = new byte[16]; // 16 bytes for a 128-bit string
+
+        // Fill the byte array with random bytes
+        random.nextBytes(randomBytes);
+
+        // Encode the random bytes as a Base64 string
+        String randomString = Base64.getEncoder().encodeToString(randomBytes);
+
+        return randomString;
     }
 
     private void setPlaceholderText() {
@@ -440,7 +455,7 @@ public class ChatClient {
             if (out != null) {
                 out.close();
             }
-            
+
         } catch (IOException e) {
             e.printStackTrace();
         }
