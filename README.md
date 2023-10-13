@@ -1,18 +1,14 @@
-# cipherChat
-Safely exchanging messages through a TCP connection
+## Certificate
 
-How to execute the ChatClient Class
-1. Enter the client username, server address and port on the console when executing this class:
-  > javac ChatClient.java
+# GenerateCertificate.java class
+This class imports bouncy castle. For the other clients that rely on this class to function the following has to be done:
+Download the bouncy castle jar file "bcprov-jdk18on-176.jar". Add this to the libraries of the project and select it in the modules. 
 
-  > java ChatClient <username> <serverAddress> <serverPort>
-2. Generate a certificate before any other communication. Type "generate" on the GUI textField.
-3. A certificate is received and shows on the terminal. Type "verify" to verify it.
-5. Then now client can exchange their messages.
+# Server.java class
+Execute the server class in an IDE.
 
-How to execute the Server Class
-1. Compile then run the server:
-   > javac Server.java
-   
-   > java Server
-2. The server stays open the entire time.
+# ChatClient.java class
+1. Execute the ChatClient on an IDE.
+2. The user is then asked to enter their username, the server address and server port.
+3. Then the GUI frame for that client is created once they are connected to the server.
+4. If the client username is already in user the client will be prompted to enter a different one.
