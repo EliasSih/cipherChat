@@ -260,9 +260,16 @@ public class ChatClient {
                         closeEverything(out,in);
                     }
 
+                    if (line.startsWith("@Username:")){
+                        System.out.println(line);
+                        Scanner scan = new Scanner(System.in);
+                        System.out.println("Enter new username: ");
+                        userName = scan.nextLine();
+                        out.println("@key:" + userName + ":" + encodedPublicKey);
+                        frame.setTitle("Secure Chat - " + userName);
+                    }
 
-
-                    if (line.startsWith("ENCRYPTED:")) {
+                    else if (line.startsWith("ENCRYPTED:")) {
 
                         //first decrypt with public key
                         try {
