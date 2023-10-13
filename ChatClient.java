@@ -53,6 +53,7 @@ public class ChatClient {
         JPanel buttonPanel = new JPanel(new FlowLayout());
         buttonPanel.add(sendButton);
         buttonPanel.add(attachButton);
+        frame.setTitle("Secure Chat - " + userName);
         frame.getContentPane().add(buttonPanel, BorderLayout.NORTH);
 
         frame.pack();
@@ -321,11 +322,12 @@ public class ChatClient {
                             decryptedImage = AES_Enctyption.decrypt(payloadComponents[1], payloadComponents[2]);
 
 
-                            System.out.println("Decrypted message: " + decryptedImage);
+                            System.out.println("Decrypted Image");
+
                         } catch (Exception e) {
                             // If there's an error, just use the original message
-                            e.printStackTrace();
-                            System.out.println("Failed to decrypt");
+//                            e.printStackTrace();
+                            System.out.println("Failed to decrypt image");
                             decryptedImage = null;
 
                             // latest message to front-end
@@ -343,7 +345,7 @@ public class ChatClient {
                                         receivedImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
                                     }
                                     else {
-                                        imageBytes = Base64.getDecoder().decode(latestImage);
+                                        imageBytes = latestImage;
                                         receivedImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
                                     }
 
@@ -371,10 +373,12 @@ public class ChatClient {
                                     SimpleAttributeSet attributes = new SimpleAttributeSet();
                                     StyleConstants.setAlignment(attributes, StyleConstants.ALIGN_LEFT);
                                     StyleConstants.setForeground(attributes, userColor);
+                                    doc.insertString(1,"\n",attributes);
 
                                     doc.insertString(doc.getLength(), "\n", attributes);
                                     textPane.setCaretPosition(textPane.getDocument().getLength());
                                     textPane.insertIcon(new ImageIcon(resizedImage));
+                                    doc.insertString(doc.getLength(),"\n",attributes);
                                 } catch (Exception ex) {
                                     ex.printStackTrace();
 
